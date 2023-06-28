@@ -1,6 +1,6 @@
 const cors = require("cors");
 const exp = require("express");
-const bp = require("body-parser");
+const bodyParser = require("body-parser");
 const passport = require("passport");
 const { connect } = require("mongoose");
 const { success, error } = require("consola");
@@ -13,7 +13,7 @@ const app = exp();
 
 // Middlewares
 app.use(cors());
-app.use(bp.json());
+app.use(bodyParser.json());
 app.use(passport.initialize());
 
 require("./middlewares/passport")(passport);

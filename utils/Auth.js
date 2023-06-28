@@ -5,18 +5,11 @@ const User = require("../models/User");
 const { SECRET } = require("../config");
 
 /**
- * @DESC To register the user (ADMIN, SUPER_ADMIN, USER)
+ * @DESC To register the user (Student,Teacher)
  */
-const userRegister = async (userDets, role, res) => {
+const userRegister = async (userDets,role, res) => {
   try {
-    // Validate the username
-    let usernameNotTaken = await validateUsername(userDets.username);
-    if (!usernameNotTaken) {
-      return res.status(400).json({
-        message: `Username is already taken.`,
-        success: false
-      });
-    }
+
 
     // validate the email
     let emailNotRegistered = await validateEmail(userDets.email);
@@ -28,21 +21,23 @@ const userRegister = async (userDets, role, res) => {
     }
 
     // Get the hashed password
+  
     const password = await bcrypt.hash(userDets.password, 12);
     // create a new user
     const newUser = new User({
       ...userDets,
       password,
-      role
+    role
     });
 
     await newUser.save();
     return res.status(201).json({
-      message: "Hurry! now you are successfully registred. Please nor login.",
+      message: "Hurry! now you are successfully registred. ",
       success: true
     });
   } catch (err) {
-    // Implement logger function (winston)
+    console.log(err);
+   
     return res.status(500).json({
       message: "Unable to create your account.",
       success: false
@@ -51,12 +46,13 @@ const userRegister = async (userDets, role, res) => {
 };
 
 /**
- * @DESC To Login the user (ADMIN, SUPER_ADMIN, USER)
+ * @DESC To Login the user (Student, Teacher)
  */
 const userLogin = async (userCreds, role, res) => {
-  let { username, password } = userCreds;
-  // First Check if the username is in the database
-  const user = await User.findOne({ username });
+try {
+  let { email, password, role } = userCreds;
+  // First Check if the email is in the database
+  const user = await User.findOne({ email });
   if (!user) {
     return res.status(404).json({
       message: "Username is not found. Invalid login credentials.",
@@ -77,74 +73,140 @@ const userLogin = async (userCreds, role, res) => {
     // Sign in the token and issue it to the user
     let token = jwt.sign(
       {
-        user_id: user._id,
-        role: user.role,
-        username: user.username,
-        email: user.email
+        email: user.email, role: user.role
       },
       SECRET,
-      { expiresIn: "7 days" }
+      { expiresIn: "1h" }
     );
-
+    user.token = `Bearer ${token}`;
     let result = {
-      username: user.username,
-      role: user.role,
-      email: user.email,
+    
       token: `Bearer ${token}`,
-      expiresIn: 168
+     
     };
+console.log(user.result.token,"user.token");
+   await user.save();
 
-    return res.status(200).json({
-      ...result,
-      message: "Hurray! You are now logged in.",
-      success: true
-    });
+    return res.status(200).json({...result, message: 'Login successful' });
+
   } else {
-    return res.status(403).json({
+    return res.status(401).json({
       message: "Incorrect password.",
       success: false
     });
   }
+} catch (error) {
+  res.status(500).json({ message: 'Login failed' });
+}
+ 
 };
 
-const validateUsername = async username => {
-  let user = await User.findOne({ username });
-  return user ? false : true;
-};
+
 
 /**
  * @DESC Passport middleware
  */
+
 const userAuth = passport.authenticate("jwt", { session: false });
 
-/**
- * @DESC Check Role Middleware
- */
-const checkRole = roles => (req, res, next) =>
-  !roles.includes(req.user.role)
-    ? res.status(401).json("Unauthorized")
-    : next();
+const checkRole = roles => (req, res, next) => {
+console.log("INSIDE checkRole")
+  res.authorizes = req.user.role
+  console.log("req.user.role",req.user.role,"roles",roles);
+  if (!roles.includes(req.user.role)) {
+    return res.status(401).json("Unauthorized");
+  }
+  next();
+};
+
+
 
 const validateEmail = async email => {
   let user = await User.findOne({ email });
   return user ? false : true;
 };
 
-const serializeUser = user => {
-  return {
-    username: user.username,
-    email: user.email,
-    name: user.name,
-    _id: user._id,
-    updatedAt: user.updatedAt,
-    createdAt: user.createdAt
-  };
+
+
+
+const refreshToken = async (token, res) => {
+  try {
+    // Validate the token
+   token = token.split(' ')[1]
+    console.log(token);
+    const decodedToken = jwt.verify(token, SECRET);
+    if (!decodedToken) {
+      return res.status(401).json({
+        message: "Invalid token",
+        success: false
+      });
+    }
+
+    // Find the user by email and update the token
+    const user = await User.findOne({ email: decodedToken.email });
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+        success: false
+      });
+    }
+console.log("3456789",user);
+    // Generate a new token
+    const newToken = jwt.sign(
+      {
+        email: user.email,
+        role: user.role
+      },
+      SECRET,
+      { expiresIn: "1h" }
+    );
+
+    // Update the token in the user collection
+  
+    user.token = `Bearer ${newToken}`;
+    await user.save();
+
+    return res.status(200).json({
+      token: `Bearer ${newToken}`,
+      message: "Token refreshed successfully",
+      success: true
+    });
+  } catch (error) {
+    console.log("2345678",error);
+    return res.status(500).json({
+      message: "Token refresh failed",
+      success: false
+    });
+  }
 };
 
+
+const getStudents = async (req,res)=>{
+try {
+const Users = await User.find({role:'student'});
+res.status(200).json({ Users, message: 'Students retrieved successfully' });
+} catch (error) {
+console.error('Get Users error:', error);
+return res.status(403).json({ message: 'Access forbidden' });
+}
+}
+
+const getTeachers = async (req,res)=>{
+  try {
+  const Users = await User.find({role:'teacher'});
+  res.status(200).json({ Users, message: 'Teacher retrieved successfully' });
+  } catch (error) {
+  console.error('Get Users error:', error);
+  return res.status(403).json({ message: 'Access forbidden' });
+  }
+  }
 module.exports = {
   userAuth,
   checkRole,
   userLogin,
   userRegister,
-  serializeUser
+ 
+  refreshToken,
+  getStudents,
+  getTeachers
 };

@@ -1,3 +1,4 @@
+
 const User = require("../models/User");
 const { SECRET } = require("../config");
 const { Strategy, ExtractJwt } = require("passport-jwt");
@@ -7,19 +8,22 @@ const opts = {
   secretOrKey: SECRET
 };
 
-module.exports = passport => {
+module.exports = (passport) => {
   passport.use(
     new Strategy(opts, async (payload, done) => {
-      await User.findById(payload.user_id)
-        .then(user => {
-          if (user) {
-            return done(null, user);
-          }
-          return done(null, false);
-        })
-        .catch(err => {
-          return done(null, false);
-        });
+      try {
+        console.log("payload  - ", payload)
+      
+        const user = await User.findOne({email:payload.email});
+       
+        if (user) {
+          user.role = [user.role]; 
+          return done(null, user);
+        }
+        return done(null, false);
+      } catch (err) {
+        return done(err, false);
+      }
     })
   );
 };
